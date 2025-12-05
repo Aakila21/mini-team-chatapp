@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Chat App</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+
+  <!-- Signup Form -->
+  <div class="auth-container" id="signup-container">
+    <h2>Sign Up</h2>
+    <input id="signup-name" placeholder="Username">
+    <input id="signup-email" placeholder="Email">
+    <input id="signup-password" type="password" placeholder="Password">
+    <button id="signup-btn">Sign Up</button>
+    <p>Already have an account? <span id="goto-login">Login</span></p>
+  </div>
+
+  <!-- Login Form -->
+  <div class="auth-container" id="login-container" style="display:none;">
+    <h2>Login</h2>
+    <input id="login-email" placeholder="Email">
+    <input id="login-password" type="password" placeholder="Password">
+    <button id="login-btn">Login</button>
+    <p>Don't have an account? <span id="goto-signup">Sign Up</span></p>
+  </div>
+
+  <!-- Chat Container -->
+  <div class="chat-container" id="chat-container" style="display:none;">
+    <h1>Team Chat App</h1>
+
+    <div class="app-layout">
+
+      <!-- Channels Sidebar -->
+      <div class="channels-sidebar">
+        <h3>Channels</h3>
+        <div id="channel-list" class="channel-list"></div>
+        <div class="create-channel-box">
+          <input id="newChannelName" type="text" placeholder="New channel...">
+          <button id="createChannelBtn">+</button>
+        </div>
+      </div>
+
+      <!-- Chat Area -->
+      <div class="chat-area">
+        <!-- Header -->
+        <div class="channel-header">
+          <h2 id="currentChannelName">Select a channel</h2>
+          <p id="member-info" style="color:#ff4fc1; font-weight:bold;">Members: 0</p>
+          <p id="online-info" style="color:#28a745; font-weight:bold;">Online Users: 0</p>
+          <button id="leave-btn" class="leave-btn" style="display:inline-block;">Leave</button>
+        </div>
+
+        <!-- Chat Messages -->
+        <div class="chat-box" id="chat-box"></div>
+
+        <!-- Message Input -->
+        <div class="message-box">
+          <input type="text" id="message-input" placeholder="Type a message...">
+          <button id="send-btn">Send</button>
+        </div>
+
+        <!-- Logout -->
+        <button id="logout-btn" class="logout-btn">Logout</button>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="scripts.js"></script>
+</body>
+</html>
