@@ -15,22 +15,23 @@ const io = socketIO(server, {
   cors: { origin: "*" }
 });
 
-// MySQL connection
+// ===== MySQL connection =====
+// For Render, replace host, user, password with your cloud MySQL credentials
 async function connectDB() {
   return await mysql.createConnection({
-    host: "localhost",
-    user: "root",
-    password: "",
-    database: "chat_app"
+    host: process.env.DB_HOST || "localhost",
+    user: process.env.DB_USER || "root",
+    password: process.env.DB_PASS || "",
+    database: process.env.DB_NAME || "chat_app"
   });
 }
 
-// JWT middleware
+// ===== JWT middleware =====
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ message: "No token" });
 
-  jwt.verify(token, "SECRET_KEY", (err, decoded) => {
+  jwt.verify(token, process.env.JWT_SECRET || "SECRET_KEY", (err, decoded) => {
     if (err) return res.status(403).json({ message: "Invalid token" });
     req.user = decoded;
     next();
@@ -53,7 +54,8 @@ app.post("/signup", async (req, res) => {
     await db.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", [name, email, hashed]);
 
     res.json({ message: "Signup success" });
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -73,10 +75,11 @@ app.post("/login", async (req, res) => {
     if (!match)
       return res.status(400).json({ message: "Invalid email or password" });
 
-    const token = jwt.sign({ id: user.id, name: user.username }, "SECRET_KEY", { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id, name: user.username }, process.env.JWT_SECRET || "SECRET_KEY", { expiresIn: "7d" });
 
     res.json({ message: "Login success", token, user: { id: user.id, username: user.username } });
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -90,7 +93,8 @@ app.post("/channels", auth, async (req, res) => {
     const db = await connectDB();
     await db.execute("INSERT INTO channels (name) VALUES (?)", [name]);
     res.json({ message: "Channel created" });
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -101,7 +105,8 @@ app.get("/channels", auth, async (req, res) => {
     const db = await connectDB();
     const [rows] = await db.execute("SELECT * FROM channels");
     res.json(rows);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -116,7 +121,8 @@ app.get("/messages/:channelId", auth, async (req, res) => {
       [channelId]
     );
     res.json(rows);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -136,7 +142,13 @@ io.on("connection", (socket) => {
   });
 });
 
+// ===== OPTIONAL: TEST ROUTE =====
+app.get("/", (req, res) => {
+  res.send("Backend is live! Socket.io running.");
+});
+
 // ===== START SERVER =====
-server.listen(5000, () => {
-  console.log("Server running on http://localhost:5000");
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

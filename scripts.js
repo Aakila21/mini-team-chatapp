@@ -1,3 +1,6 @@
+// ===== Backend URL =====
+const BACKEND_URL = "https://aakila-chat-api.onrender.com";
+
 let socket = null;
 let currentChannel = null;
 let lastMessageTime = null;
@@ -41,7 +44,7 @@ signupBtn.onclick = async () => {
   const password = document.getElementById("signup-password").value;
   if (!name || !email || !password) return alert("All fields required");
 
-  const res = await fetch("http://localhost:5000/signup", {
+  const res = await fetch(`${BACKEND_URL}/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, email, password })
@@ -60,7 +63,7 @@ loginBtn.onclick = async () => {
   const password = document.getElementById("login-password").value;
   if (!email || !password) return alert("Email & password required");
 
-  const res = await fetch("http://localhost:5000/login", {
+  const res = await fetch(`${BACKEND_URL}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password })
@@ -86,7 +89,7 @@ window.onload = () => {
 // ===== Initialize Socket =====
 function initSocket(userId) {
   if (socket) socket.disconnect();
-  socket = io("http://localhost:5000", { query: { user_id: userId } });
+  socket = io(BACKEND_URL, { query: { user_id: userId } });
 
   socket.on("receive_message", data => {
     if (data.channel_id === currentChannel) appendMessage(data.message, data.user);
@@ -107,7 +110,7 @@ function loadChat() {
 
 // ===== Load Channels =====
 async function loadChannels() {
-  const res = await fetch("http://localhost:5000/channels", {
+  const res = await fetch(`${BACKEND_URL}/channels`, {
     headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
   });
   const channels = await res.json();
@@ -125,7 +128,7 @@ async function loadChannels() {
 createChannelBtn.onclick = async () => {
   const name = newChannelName.value.trim();
   if (!name) return alert("Enter channel name");
-  const res = await fetch("http://localhost:5000/channels", {
+  const res = await fetch(`${BACKEND_URL}/channels`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${localStorage.getItem("token")}`,
@@ -142,15 +145,6 @@ createChannelBtn.onclick = async () => {
 
 // ===== Select / Join Channel =====
 async function selectChannel(id, name) {
-  await fetch("http://localhost:5000/channels/join", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${localStorage.getItem("token")}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ channel_id: id })
-  });
-
   currentChannel = id;
   lastMessageTime = null;
 
@@ -166,15 +160,6 @@ async function selectChannel(id, name) {
 // ===== Leave Channel =====
 leaveBtn.onclick = async () => {
   if (!currentChannel) return alert("No channel selected");
-  await fetch("http://localhost:5000/channels/leave", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${localStorage.getItem("token")}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ channel_id: currentChannel })
-  });
-  alert("Left channel");
   currentChannel = null;
   chatBox.innerHTML = "";
   currentChannelName.textContent = "Select a channel";
@@ -182,55 +167,29 @@ leaveBtn.onclick = async () => {
   leaveBtn.style.display = "none";
 };
 
-// ===== Load Messages with Pagination =====
+// ===== Load Messages =====
 async function loadMessages(channelId) {
   if (loadingMessages) return;
   loadingMessages = true;
 
-  const url = lastMessageTime
-    ? `http://localhost:5000/messages/${channelId}?before=${lastMessageTime}`
-    : `http://localhost:5000/messages/${channelId}`;
-
+  const url = `${BACKEND_URL}/messages/${channelId}`;
   const res = await fetch(url, {
     headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
   });
 
   const messages = await res.json();
-  if (!messages.length) {
-    loadingMessages = false;
-    return;
-  }
-
-  lastMessageTime = messages[messages.length - 1].timestamp;
-
-  messages.reverse().forEach(msg => {
-    prependMessage(msg.message, { username: msg.username });
-  });
-
+  chatBox.innerHTML = "";
+  messages.forEach(msg => appendMessage(msg.message, { username: msg.username }));
+  chatBox.scrollTop = chatBox.scrollHeight;
   loadingMessages = false;
 }
 
-// ===== Prepend Message =====
-function prependMessage(message, user) {
+// ===== Append Message =====
+function appendMessage(message, user) {
   const div = document.createElement("div");
   div.innerHTML = `<strong>${user.username}:</strong> ${message}`;
-  chatBox.insertBefore(div, chatBox.firstChild);
-}
-
-// ===== Scroll Event for Pagination =====
-chatBox.addEventListener("scroll", () => {
-  if (chatBox.scrollTop === 0 && currentChannel) {
-    loadMessages(currentChannel);
-  }
-});
-
-// ===== Load Members =====
-async function loadChannelMembers(channelId) {
-  const res = await fetch(`http://localhost:5000/channels/${channelId}/members`, {
-    headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
-  });
-  const data = await res.json();
-  memberInfo.textContent = `Members: ${data.count}`;
+  chatBox.appendChild(div);
+  chatBox.scrollTop = chatBox.scrollHeight;
 }
 
 // ===== Send Message =====
@@ -241,14 +200,6 @@ sendBtn.onclick = () => {
   socket.emit("send_message", { message, user, channel_id: currentChannel });
   messageInput.value = "";
 };
-
-// ===== Append Message =====
-function appendMessage(message, user) {
-  const div = document.createElement("div");
-  div.innerHTML = `<strong>${user.username}:</strong> ${message}`;
-  chatBox.appendChild(div);
-  chatBox.scrollTop = chatBox.scrollHeight;
-}
 
 // ===== Logout =====
 logoutBtn.onclick = () => {
