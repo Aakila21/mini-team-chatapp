@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const mysql = require("mysql2/promise");
+const { Pool } = require("pg");
 const http = require("http");
 const socketIO = require("socket.io");
 
@@ -15,16 +15,14 @@ const io = socketIO(server, {
   cors: { origin: "*" }
 });
 
-// ===== MySQL connection =====
-// For Render, replace host, user, password with your cloud MySQL credentials
-async function connectDB() {
-  return await mysql.createConnection({
-    host: process.env.DB_HOST || "localhost",
-    user: process.env.DB_USER || "root",
-    password: process.env.DB_PASS || "",
-    database: process.env.DB_NAME || "chat_app"
-  });
-}
+// ===== PostgreSQL connection =====
+const pool = new Pool({
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "postgres",
+  password: process.env.DB_PASS || "",
+  database: process.env.DB_NAME || "chat_app",
+  port: process.env.DB_PORT || 5432
+});
 
 // ===== JWT middleware =====
 function auth(req, res, next) {
@@ -45,13 +43,19 @@ app.post("/signup", async (req, res) => {
     return res.status(400).json({ message: "All fields required" });
 
   try {
-    const db = await connectDB();
-    const [exists] = await db.execute("SELECT * FROM users WHERE email = ?", [email]);
-    if (exists.length > 0)
+    const client = await pool.connect();
+    const exists = await client.query("SELECT * FROM users WHERE email=$1", [email]);
+    if (exists.rows.length > 0) {
+      client.release();
       return res.status(400).json({ message: "Email already exists" });
+    }
 
     const hashed = await bcrypt.hash(password, 10);
-    await db.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", [name, email, hashed]);
+    await client.query(
+      "INSERT INTO users (username, email, password) VALUES ($1, $2, $3)",
+      [name, email, hashed]
+    );
+    client.release();
 
     res.json({ message: "Signup success" });
   } catch (err) {
@@ -63,19 +67,24 @@ app.post("/signup", async (req, res) => {
 // ===== LOGIN =====
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
-
   try {
-    const db = await connectDB();
-    const [rows] = await db.execute("SELECT * FROM users WHERE email = ?", [email]);
-    if (rows.length === 0)
+    const client = await pool.connect();
+    const result = await client.query("SELECT * FROM users WHERE email=$1", [email]);
+    client.release();
+
+    if (result.rows.length === 0)
       return res.status(400).json({ message: "Invalid email or password" });
 
-    const user = rows[0];
+    const user = result.rows[0];
     const match = await bcrypt.compare(password, user.password);
     if (!match)
       return res.status(400).json({ message: "Invalid email or password" });
 
-    const token = jwt.sign({ id: user.id, name: user.username }, process.env.JWT_SECRET || "SECRET_KEY", { expiresIn: "7d" });
+    const token = jwt.sign(
+      { id: user.id, name: user.username },
+      process.env.JWT_SECRET || "SECRET_KEY",
+      { expiresIn: "7d" }
+    );
 
     res.json({ message: "Login success", token, user: { id: user.id, username: user.username } });
   } catch (err) {
@@ -90,8 +99,9 @@ app.post("/channels", auth, async (req, res) => {
   if (!name) return res.status(400).json({ message: "Channel name required" });
 
   try {
-    const db = await connectDB();
-    await db.execute("INSERT INTO channels (name) VALUES (?)", [name]);
+    const client = await pool.connect();
+    await client.query("INSERT INTO channels (name) VALUES ($1)", [name]);
+    client.release();
     res.json({ message: "Channel created" });
   } catch (err) {
     console.error(err);
@@ -102,9 +112,10 @@ app.post("/channels", auth, async (req, res) => {
 // ===== GET CHANNEL LIST =====
 app.get("/channels", auth, async (req, res) => {
   try {
-    const db = await connectDB();
-    const [rows] = await db.execute("SELECT * FROM channels");
-    res.json(rows);
+    const client = await pool.connect();
+    const result = await client.query("SELECT * FROM channels");
+    client.release();
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
@@ -115,12 +126,17 @@ app.get("/channels", auth, async (req, res) => {
 app.get("/messages/:channelId", auth, async (req, res) => {
   const { channelId } = req.params;
   try {
-    const db = await connectDB();
-    const [rows] = await db.execute(
-      "SELECT m.*, u.username FROM messages m JOIN users u ON m.user_id = u.id WHERE channel_id = ? ORDER BY m.id ASC",
+    const client = await pool.connect();
+    const result = await client.query(
+      `SELECT m.*, u.username 
+       FROM messages m 
+       JOIN users u ON m.user_id = u.id 
+       WHERE channel_id = $1 
+       ORDER BY m.id ASC`,
       [channelId]
     );
-    res.json(rows);
+    client.release();
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
@@ -135,10 +151,18 @@ io.on("connection", (socket) => {
 
   socket.on("send_message", async (data) => {
     const { channel_id, user, message } = data;
-    const db = await connectDB();
-    await db.execute("INSERT INTO messages (channel_id, user_id, message) VALUES (?, ?, ?)", [channel_id, user.id, message]);
+    try {
+      const client = await pool.connect();
+      await client.query(
+        "INSERT INTO messages (channel_id, user_id, message) VALUES ($1, $2, $3)",
+        [channel_id, user.id, message]
+      );
+      client.release();
 
-    io.to(channel_id).emit("receive_message", { channel_id, message, user });
+      io.to(channel_id).emit("receive_message", { channel_id, message, user });
+    } catch (err) {
+      console.error(err);
+    }
   });
 });
 
